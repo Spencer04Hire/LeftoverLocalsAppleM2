@@ -10632,7 +10632,6 @@ static void ggml_compute_forward_mul_mat(
 #endif
 
 #if defined(GGML_USE_ACCELERATE) || defined(GGML_USE_OPENBLAS)
-    asdf
     if (ggml_compute_forward_mul_mat_use_blas(src0, src1, dst)) {
         if (params->ith != 0) {
             return;
