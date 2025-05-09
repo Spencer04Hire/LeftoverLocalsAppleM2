@@ -1629,7 +1629,11 @@ static bool llama_eval_internal(
     // run the computation
     ggml_build_forward_expand(&gf, cur);
 
+#ifdef GGML_USE_METAL
+    ggml_metal_graph_compute(lctx.ctx_metal, &gf);
+#else
     ggml_graph_compute(ctx0, &gf);
+#endif
 
     if (cgraph_fname) {
         ggml_graph_export(&gf, cgraph_fname);

